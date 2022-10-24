@@ -788,9 +788,9 @@ def writeDotScript(taskDotScriptFile,
     """
     import inspect
 
-    dsfp = os.fdopen(os.open(taskDotScriptFile, os.O_WRONLY | os.O_CREAT, 0755), 'w')
+    dsfp = os.fdopen(os.open(taskDotScriptFile, os.O_WRONLY | os.O_CREAT, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH), 'w')
 
-    dsfp.write("""#!/usr/bin/env python
+    dsfp.write("""#!/usr/bin/env python3
 #
 # This is a script to create a dot graph from pyflow state files.
 # Usage: $script >| task_graph.dot
@@ -3464,7 +3464,7 @@ class WorkflowRunner(object) :
             except KeyboardInterrupt:
                 msg = "Keyboard Interrupt, shutting down running tasks..."
                 self._killWorkflow(msg)
-            except DataDirException, e:
+            except DataDirException as e:
                 # Special exception for when pyflow directory can't be initialized.
                 # A killWorkflow is not needed for this case, because no workflow
                 # could be started.

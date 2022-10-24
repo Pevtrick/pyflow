@@ -1,3 +1,4 @@
+from __future__ import print_function
 
 
 class A :
@@ -20,6 +21,6 @@ b.inc = a.inc
 
 b.inc()
 
-print "a", a.x
-print "b", b.x
+print("a", a.x)
+print("b", b.x)
 
