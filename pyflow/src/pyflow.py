@@ -37,7 +37,7 @@ pyflow -- a lightweight parallel task engine
 """
 
 __author__ = 'Christopher Saunders'
-
+__version__ = '1.1.20'
 
 import copy
 import datetime
@@ -50,46 +50,18 @@ import threading
 import time
 import traceback
 
-from pyflowConfig import siteConfig
+from .pyflowConfig import siteConfig
 
 
 moduleDir = os.path.abspath(os.path.dirname(__file__))
 
 
-# minimum python version
-#
-pyver = sys.version_info
-if pyver[0] != 2 or (pyver[0] == 2 and pyver[1] < 4) :
-    raise Exception("pyflow module has only been tested for python versions [2.4,3.0)")
 
-# problem python versions:
+# We can lower the per-thread stack size to improve memory consumption when a
+# very large number of jobs are run. Below it is lowered to 256Kb (compare to
+# linux default of 8Mb).
 #
-# Internal interpreter deadlock issue in python 2.7.2:
-# http://bugs.python.org/issue13817
-# ..is so bad that pyflow can partially, but not completely, work around it -- so issue a warning for this case.
-if pyver[0] == 2 and pyver[1] == 7 and pyver[2] == 2 :
-    raise Exception("Python interpreter errors in python 2.7.2 may cause a pyflow workflow hang or crash. Please use a different python version.")
-
-
-# The line below is a workaround for a python 2.4/2.5 bug in
-# the subprocess module.
-#
-# Bug is described here: http://bugs.python.org/issue1731717
-# Workaround is described here: http://bugs.python.org/issue1236
-#
-subprocess._cleanup = lambda: None
-
-
-# In python 2.5 or greater, we can lower the per-thread stack size to
-# improve memory consumption when a very large number of jobs are
-# run. Below it is lowered to 256Kb (compare to linux default of
-# 8Mb).
-#
-try:
-    threading.stack_size(min(256 * 1024, threading.stack_size))
-except AttributeError:
-    # Assuming this means python version < 2.5
-    pass
+threading.stack_size(min(256 * 1024, threading.stack_size()))
 
 
 class GlobalSync :
@@ -102,41 +74,6 @@ class GlobalSync :
     """
     maxSubprocess = 2
     subprocessControl = threading.Semaphore(maxSubprocess)
-
-
-
-def getPythonVersion() :
-    python_version = sys.version_info
-    return ".".join([str(i) for i in python_version])
-
-pythonVersion = getPythonVersion()
-
-
-# Get pyflow version number
-#
-
-def getPyflowVersion() :
-    # this will be automatically macro-ed in for pyflow releases:
-    pyflowAutoVersion = None
-
-    # Get version number in regular release code:
-    if pyflowAutoVersion is not None : return pyflowAutoVersion
-
-    # Get version number during dev:
-    try :
-        proc = subprocess.Popen(["git", "describe"], stdout=subprocess.PIPE, stderr=open(os.devnull, "w"), cwd=moduleDir, shell=False)
-        (stdout, _stderr) = proc.communicate()
-        retval = proc.wait()
-        stdoutList = stdout.split("\n")[:-1]
-        if (retval == 0) and (len(stdoutList) == 1) : return stdoutList[0]
-    except OSError:
-        # no git installed
-        pass
-
-    return "unknown"
-
-
-__version__ = getPyflowVersion()
 
 
 # portability functions:
@@ -225,14 +162,6 @@ def timeStrToTimeStamp(ts):
     return calendar.timegm(d.timetuple())
 
 
-
-def isInt(x) :
-    return isinstance(x, (int, long))
-
-def isString(x):
-    return isinstance(x, basestring)
-
-
 def isIterable(x):
     return (getattr(x, '__iter__', False) != False)
 
@@ -246,7 +175,7 @@ def lister(x):
     """
     # special handling in case a single string is given:
     if x is None : return []
-    if (isString(x) or (not isIterable(x))) : return [x]
+    if (isinstance(x, str) or (not isIterable(x))) : return [x]
     return list(x)
 
 
@@ -440,7 +369,7 @@ def argToBool(x) :
     class FalseStrings :
         val = ("", "0", "false", "f", "no", "n", "off")
 
-    if isinstance(x, basestring) :
+    if isinstance(x, str) :
         return (x.lower() not in FalseStrings.val)
     return bool(x)
 
@@ -787,6 +716,7 @@ def writeDotScript(taskDotScriptFile,
     write dot task graph creation script
     """
     import inspect
+    import stat
 
     dsfp = os.fdopen(os.open(taskDotScriptFile, os.O_WRONLY | os.O_CREAT, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH), 'w')
 
@@ -838,13 +768,13 @@ class Command(object) :
             (isIterable(cmd) and len(cmd) == 0)) :
             self.cmd = None
             self.type = "none"
-        elif isString(cmd) :
+        elif isinstance(cmd, str) :
             self.cmd = Command.cleanStr(cmd)
             self.type = "str"
         elif isIterable(cmd) :
             self.cmd = []
             for i, s in enumerate(cmd):
-                if not (isString(s) or isInt(s)):
+                if not (isinstance(s, str) or isinstance(s, int)):
                     raise Exception("Argument: '%s' from position %i in argument list command is not a string or integer. Full command: '%s'" %
                                     (str(s), (i + 1), " ".join([str(s) for s in cmd])))
                 self.cmd.append(Command.cleanStr(s))
@@ -869,7 +799,7 @@ class Command(object) :
 
     @staticmethod
     def cleanStr(s) :
-        if isInt(s) : s = str(s)
+        if isinstance(s, int) : s = str(s)
         if "\n" in s : raise Exception("Task command/argument contains newline characters: '%s'" % (s))
         return s.strip()
 
@@ -2866,7 +2796,7 @@ class WorkflowRunnerThreadSharedData(object) :
         param.mailTo = setzer(param.mailTo)
         param.schedulerArgList = lister(param.schedulerArgList)
         if param.successMsg is not None :
-            if not isString(param.successMsg) :
+            if not isinstance(param.successMsg, str) :
                 raise Exception("successMsg argument to WorkflowRunner.run() is not a string")
 
         # create combined task retry settings manager:
@@ -3133,7 +3063,7 @@ The associated pyflow job details are as follows:
 
         msg = [ "%s\t%s" % ("pyFlowClientWorkflowClass:", self.param.workflowClassName),
               "%s\t%s" % ("pyFlowVersion:", __version__),
-              "%s\t%s" % ("pythonVersion:", pythonVersion),
+              "%s\t%s" % ("pythonVersion:", sys.version),
               "%s\t%s" % ("Runid:", self.getRunid()),
               "%s\t%s UTC" % ("RunStartTime:", self.param.logRunStartTime),
               "%s\t%s UTC" % ("NotificationTime:", timeStrNow()),
@@ -4150,7 +4080,7 @@ class WorkflowRunner(object) :
     @staticmethod
     def _checkTaskLabel(label) :
         # sanity check label:
-        if not isinstance(label, basestring) :
+        if not isinstance(label, str) :
             raise Exception ("Task label is not a string")
         if label == "" :
             raise Exception ("Task label is empty")
@@ -4360,7 +4290,7 @@ class WorkflowRunner(object) :
         msg = ["Initiating pyFlow run"]
         msg.append("pyFlowClientWorkflowClass: %s" % (param.workflowClassName))
         msg.append("pyFlowVersion: %s" % (__version__))
-        msg.append("pythonVersion: %s" % (pythonVersion))
+        msg.append("pythonVersion: %s" % (sys.version))
         msg.append("WorkingDir: '%s'" % (self._cdata().cwd))
         msg.append("ProcessCmdLine: '%s'" % (cmdline()))
 
